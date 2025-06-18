@@ -35,7 +35,7 @@ jobs:
           echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
           $HOME/.dotnet/dotnet --info
 
-      - name: Install Ngrok v3 and start tunnel
+      - name: Install and launch Ngrok tunnel (v3)
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
@@ -43,8 +43,10 @@ jobs:
           echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update && sudo apt install -y ngrok
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
-          echo "Launching Ngrok tunnel..."
-          timeout 30s ngrok tcp 2222 --log=stdout
+          ngrok tcp 2222 --log=stdout > ngrok.log &
+          sleep 5
+          echo -n "Tunnel address: "
+          grep -oP 'url=tcp://\K[\w\.-]+:\d+' ngrok.log || echo "Could not parse tunnel address."
 
       - name: Keep the runner alive
         run: tail -f /dev/null
