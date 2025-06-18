@@ -35,19 +35,17 @@ jobs:
           echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
           $HOME/.dotnet/dotnet --info
 
-      - name: Install Ngrok
+      - name: Install and launch Ngrok tunnel
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
           curl -sSL https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip -o ngrok.zip
           unzip ngrok.zip
           sudo mv ngrok /usr/local/bin
-
-      - name: Start Ngrok tunnel for SSH
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        run: |
           ngrok authtoken "$NGROK_AUTH_TOKEN"
           ngrok tcp 2222 > ngrok.log &
           sleep 5
+          echo "Waiting for Ngrok tunnel..."
           for i in {1..10}; do
             TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels | grep -Po '"public_url":"tcp://\K[^"]+' || true)
             if [ -n "$TUNNEL_URL" ]; then
