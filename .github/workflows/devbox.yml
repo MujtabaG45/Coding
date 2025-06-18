@@ -47,9 +47,15 @@ jobs:
         run: |
           ngrok authtoken "$NGROK_AUTH_TOKEN"
           ngrok tcp 2222 > ngrok.log &
-          sleep 3
-          echo "Tunnel address:"
-          curl --silent http://localhost:4040/api/tunnels | grep -Po '"public_url":"tcp://\K[^"]+'
+          sleep 5
+          for i in {1..10}; do
+            TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels | grep -Po '"public_url":"tcp://\K[^"]+' || true)
+            if [ -n "$TUNNEL_URL" ]; then
+              echo "Tunnel address: $TUNNEL_URL"
+              break
+            fi
+            sleep 2
+          done
 
       - name: Keep the runner alive
         run: tail -f /dev/null
