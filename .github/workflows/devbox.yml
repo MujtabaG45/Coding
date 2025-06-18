@@ -19,9 +19,11 @@ jobs:
           sudo sed -i 's/^#PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
           sudo service ssh restart
 
-      - name: Install .NET 9 via Microsoft script
+      - name: Install .NET 9 via Microsoft script (robust)
         run: |
-          curl -sSL https://dot.net/install.sh | bash /dev/stdin --channel 9.0
+          curl -sSL https://dotnet.microsoft.com/en-us/download/dotnet/scripts/v1/dotnet-install.sh -o dotnet-install.sh
+          chmod +x dotnet-install.sh
+          ./dotnet-install.sh --channel 9.0
           echo "$HOME/.dotnet" >> $GITHUB_PATH
           echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
           $HOME/.dotnet/dotnet --info
