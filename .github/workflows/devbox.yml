@@ -35,15 +35,15 @@ jobs:
           echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
           $HOME/.dotnet/dotnet --info
 
-      - name: Install and start Ngrok (foreground)
+      - name: Install Ngrok v3 and start tunnel
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
-          curl -sSL https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip -o ngrok.zip
-          unzip ngrok.zip
-          sudo mv ngrok /usr/local/bin
-          ngrok authtoken "$NGROK_AUTH_TOKEN"
-          echo "Starting Ngrok tunnel on port 2222..."
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install -y ngrok
+          ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
+          echo "Launching Ngrok tunnel..."
           timeout 30s ngrok tcp 2222 --log=stdout
 
       - name: Keep the runner alive
