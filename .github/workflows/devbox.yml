@@ -14,10 +14,13 @@ jobs:
           sudo apt update
           sudo apt install -y openssh-server curl unzip
           sudo mkdir -p /run/sshd
-          sudo sed -i 's/^#Port .*/Port 2222/' /etc/ssh/sshd_config
-          sudo sed -i 's/^#PermitRootLogin .*/PermitRootLogin yes/' /etc/ssh/sshd_config
-          sudo sed -i 's/^#PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
-          sudo service ssh restart
+          echo 'Port 2222' | sudo tee -a /etc/ssh/sshd_config
+          echo 'PermitRootLogin yes' | sudo tee -a /etc/ssh/sshd_config
+          echo 'PasswordAuthentication no' | sudo tee -a /etc/ssh/sshd_config
+          sudo /usr/sbin/sshd -D &   # start sshd in foreground in background
+          sleep 3
+          echo "Verifying port 2222 is listening:"
+          sudo ss -tulpen | grep :2222 || echo "⚠️ SSHD not listening"
 
       - name: Add SSH public key
         run: |
