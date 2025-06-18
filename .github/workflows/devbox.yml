@@ -1,4 +1,4 @@
-name: SSH Devbox with Ngrok
+name: SSH Devbox with Ngrok + GitHub Push
 
 on:
   workflow_dispatch:
@@ -17,10 +17,9 @@ jobs:
           echo 'Port 2222' | sudo tee -a /etc/ssh/sshd_config
           echo 'PermitRootLogin yes' | sudo tee -a /etc/ssh/sshd_config
           echo 'PasswordAuthentication no' | sudo tee -a /etc/ssh/sshd_config
-          sudo /usr/sbin/sshd -D &   # start sshd in foreground in background
+          sudo /usr/sbin/sshd -D &   # run sshd in background
           sleep 3
-          echo "Verifying port 2222 is listening:"
-          sudo ss -tulpen | grep :2222 || echo "⚠️ SSHD not listening"
+          sudo ss -tulpen | grep :2222 || echo "⚠️ SSH not listening"
 
       - name: Add SSH public key
         run: |
@@ -50,6 +49,29 @@ jobs:
           sleep 5
           echo -n "Tunnel address: "
           grep -oP 'url=tcp://\K[\w\.-]+:\d+' ngrok.log || echo "Could not parse tunnel address."
+
+      - name: Auto-init Git project and push to GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GH_PERSONAL_TOKEN }}
+          GH_USERNAME: ${{ secrets.GH_USERNAME }}
+        run: |
+          cd ~
+          mkdir auto-devbox && cd auto-devbox
+          git init
+          echo "# Auto Devbox" > README.md
+          git config --global user.name "$GH_USERNAME"
+          git config --global user.email "$GH_USERNAME@users.noreply.github.com"
+
+          echo "Creating GitHub repo..."
+          curl -s -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/user/repos \
+            -d '{"name":"auto-devbox","private":true}' || true
+
+          git remote add origin "https://$GH_USERNAME:$GH_TOKEN@github.com/$GH_USERNAME/auto-devbox.git"
+          git add .
+          git commit -m "Initial auto commit"
+          git push -u origin master || echo "⚠️ Push skipped or failed"
 
       - name: Keep the runner alive
         run: tail -f /dev/null
