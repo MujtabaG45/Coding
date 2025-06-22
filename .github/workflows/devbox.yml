@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install Dependencies
+      - name: Install OpenSSH Server & GitHub CLI
         run: |
           sudo apt update
           sudo apt install -y openssh-server gh
@@ -33,25 +33,34 @@ jobs:
           sudo apt install -y ngrok
           ngrok config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
 
-      - name: Start ngrok tunnel for SSH
+      - name: Start ngrok tunnel for SSH (with retry logic)
         run: |
           nohup ngrok tcp 2222 --log=stdout > ngrok.log 2>&1 &
-          sleep 5
-          echo "🎯 Tunnel address:"
-          grep -o 'tcp://[^\"]*' ngrok.log || echo "❌ No tunnel found"
+          echo "⏳ Waiting for ngrok to initialize..."
+          for i in {1..10}; do
+            sleep 3
+            addr=$(grep -o 'tcp://[^\"]*' ngrok.log)
+            if [[ ! -z "$addr" ]]; then
+              echo "🎯 Tunnel address: $addr"
+              break
+            fi
+          done
+          if [[ -z "$addr" ]]; then
+            echo "❌ Still no tunnel found. Here's the log output for debugging:"
+            tail -n 20 ngrok.log
+            exit 1
+          fi
 
-      - name: Clone your workspace repo (or create working dir)
-        run: |
-          mkdir -p ~/devbox  # replace with git clone if you use a repo
-          echo "🔧 Workspace ready at ~/devbox"
+      - name: Create working directory
+        run: mkdir -p ~/devbox
 
-      - name: Periodically save snapshot to GitHub Artifacts
+      - name: Start periodic artifact backups
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "📦 Starting periodic artifact backup loop..."
           while true; do
-            tar -czf devbox.tar.gz ~/devbox
+            tar -czf devbox.tar.gz -C ~/ devbox
             timestamp=$(date +%s)
             cp devbox.tar.gz devbox-$timestamp.tar.gz
             gh run upload-artifact --name "devbox-$timestamp" devbox-$timestamp.tar.gz || echo "⚠️ Upload failed"
