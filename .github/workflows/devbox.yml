@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  start-ssh-tunnel:
-    name: Start SSH Tunnel using localhost.run
+  remote-devbox:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,31 +24,36 @@ jobs:
           echo "${{ secrets.SSH_PUBLIC_KEY }}" > ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/authorized_keys
 
-      - name: Start SSH tunnel via localhost.run
+      - name: Start SSH tunnel via localhost.run and reveal address
         run: |
-          echo "🌍 Starting reverse SSH tunnel via localhost.run..."
-          nohup ssh -o StrictHostKeyChecking=no -R 2222:localhost:2222 ssh.localhost.run -N > tunnel.log 2>&1 &
+          echo "🌍 Establishing SSH reverse tunnel via localhost.run..."
+          nohup ssh -o StrictHostKeyChecking=no -R 2222:localhost:2222 ssh.localhost.run -N -v > tunnel.log 2>&1 &
           sleep 5
 
-          echo "🔍 Attempting to extract tunnel address..."
-          grep -oE "[a-z0-9]+\.localhost\.run" tunnel.log | head -n 1 || {
-            echo "❌ Could not detect tunnel address."
-            tail -n 20 tunnel.log
-            exit 1
-          }
+          echo "🔍 Extracting tunnel address from log..."
+          subdomain=$(grep -oE '[a-z0-9]+\.localhost\.run' tunnel.log | head -n 1)
 
-      - name: Create working directory
+          if [[ -z "$subdomain" ]]; then
+            echo "❌ Could not detect tunnel address."
+            tail -n 30 tunnel.log
+            exit 1
+          fi
+
+          echo "🎯 Your SSH endpoint:"
+          echo "ssh -p 2222 root@$subdomain"
+
+      - name: Create devbox directory
         run: mkdir -p ~/devbox
 
-      - name: Periodically upload to GitHub Artifacts
+      - name: Start periodic snapshot loop
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "📦 Starting periodic backup loop..."
+          echo "📦 Starting snapshot uploads to GitHub Artifacts..."
           while true; do
             tar -czf devbox.tar.gz -C ~/ devbox
             timestamp=$(date +%s)
             cp devbox.tar.gz devbox-$timestamp.tar.gz
-            gh run upload-artifact --name "devbox-$timestamp" devbox-$timestamp.tar.gz || echo "⚠️ Upload failed"
+            gh run upload-artifact --name "devbox-$timestamp" devbox-$timestamp.tar.gz || echo "⚠️ Artifact upload failed"
             sleep 60
           done
