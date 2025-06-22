@@ -24,32 +24,37 @@ jobs:
           echo "${{ secrets.SSH_PUBLIC_KEY }}" > ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/authorized_keys
 
-      - name: Start SSH tunnel via localhost.run and reveal address
+      - name: Start SSH tunnel via localhost.run and show address
         run: |
-          echo "🌍 Establishing SSH reverse tunnel via localhost.run..."
-          nohup ssh -o StrictHostKeyChecking=no -R 2222:localhost:2222 ssh.localhost.run -N -v > tunnel.log 2>&1 &
+          echo "🌍 Starting SSH reverse tunnel via localhost.run..."
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 2222:localhost:2222 ssh.localhost.run -N -v 2>&1 | tee tunnel.log &
           sleep 5
-
-          echo "🔍 Extracting tunnel address from log..."
-          subdomain=$(grep -oE '[a-z0-9]+\.localhost\.run' tunnel.log | head -n 1)
+          
+          echo "🔍 Looking for tunnel address..."
+          for i in {1..10}; do
+            sleep 2
+            subdomain=$(grep -oE '[a-z0-9]{6,}\.localhost\.run' tunnel.log | head -n 1)
+            if [[ -n "$subdomain" ]]; then
+              echo "🎯 SSH into your devbox with:"
+              echo "ssh -p 2222 root@$subdomain"
+              break
+            fi
+          done
 
           if [[ -z "$subdomain" ]]; then
-            echo "❌ Could not detect tunnel address."
+            echo "❌ Could not detect tunnel address. Here's the log tail:"
             tail -n 30 tunnel.log
             exit 1
           fi
 
-          echo "🎯 Your SSH endpoint:"
-          echo "ssh -p 2222 root@$subdomain"
-
-      - name: Create devbox directory
+      - name: Create devbox workspace
         run: mkdir -p ~/devbox
 
-      - name: Start periodic snapshot loop
+      - name: Snapshot loop to GitHub Artifacts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "📦 Starting snapshot uploads to GitHub Artifacts..."
+          echo "📦 Uploading periodic snapshots of ~/devbox..."
           while true; do
             tar -czf devbox.tar.gz -C ~/ devbox
             timestamp=$(date +%s)
