@@ -1,11 +1,11 @@
-name: Remote Devbox SSH
+name: Remote Devbox SSH (localhost.run)
 
 on:
   workflow_dispatch:
 
 jobs:
   start-ssh-tunnel:
-    name: Start SSH Tunnel via ngrok
+    name: Start SSH Tunnel using localhost.run
     runs-on: ubuntu-latest
 
     steps:
@@ -25,41 +25,27 @@ jobs:
           echo "${{ secrets.SSH_PUBLIC_KEY }}" > ~/.ssh/authorized_keys
           chmod 600 ~/.ssh/authorized_keys
 
-      - name: Install & verify ngrok
+      - name: Start SSH tunnel via localhost.run
         run: |
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update
-          sudo apt install -y ngrok
-          ngrok config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
-          ngrok version || { echo "❌ ngrok failed to install"; exit 1; }
+          echo "🌍 Starting reverse SSH tunnel via localhost.run..."
+          nohup ssh -o StrictHostKeyChecking=no -R 2222:localhost:2222 ssh.localhost.run -N > tunnel.log 2>&1 &
+          sleep 5
 
-      - name: Start ngrok tunnel for SSH (with retry)
-        run: |
-          nohup ngrok tcp 2222 --log=stdout > ngrok.log 2>&1 &
-          echo "⏳ Waiting for ngrok to initialize..."
-          for i in {1..10}; do
-            sleep 3
-            addr=$(grep -o 'tcp://[^\"]*' ngrok.log)
-            if [[ ! -z "$addr" ]]; then
-              echo "🎯 Tunnel address: $addr"
-              break
-            fi
-          done
-          if [[ -z "$addr" ]]; then
-            echo "❌ No tunnel found. Here's the log:"
-            tail -n 20 ngrok.log
+          echo "🔍 Attempting to extract tunnel address..."
+          grep -oE "[a-z0-9]+\.localhost\.run" tunnel.log | head -n 1 || {
+            echo "❌ Could not detect tunnel address."
+            tail -n 20 tunnel.log
             exit 1
-          fi
+          }
 
       - name: Create working directory
         run: mkdir -p ~/devbox
 
-      - name: Periodically upload snapshot to GitHub Artifacts
+      - name: Periodically upload to GitHub Artifacts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "📦 Starting snapshot loop..."
+          echo "📦 Starting periodic backup loop..."
           while true; do
             tar -czf devbox.tar.gz -C ~/ devbox
             timestamp=$(date +%s)
