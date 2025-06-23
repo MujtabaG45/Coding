@@ -21,14 +21,17 @@ jobs:
       - name: Start SSH tunnel via localhost.run (nokey, backgrounded)
         run: |
           echo "🌍 Starting SSH reverse tunnel via localhost.run..."
-          (
-            echo "🎯 Tunnel is ready! Use this to connect:"
-            echo "ssh -p 2222 root@$(hostname).localhost.run"
-            sleep infinity
-          ) | ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 2222:localhost:2222 nokey@localhost.run -T > tunnel.log 2>&1 &
-
-          disown
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 2222:localhost:2222 nokey@localhost.run -T > tunnel.log 2>&1 &
           sleep 5
+          echo "🔍 Extracting tunnel address..."
+          subdomain=$(grep -oE '[a-z0-9]{6,}\.localhost\.run' tunnel.log | head -n 1)
+          if [[ -n "$subdomain" ]]; then
+            echo "🎯 SSH into your Devbox with:"
+            echo "ssh -p 2222 root@$subdomain"
+          else
+            echo "⚠️ Could not detect tunnel address. Here's the log tail:"
+            tail -n 40 tunnel.log
+          fi
 
       - name: Create devbox workspace
         run: mkdir -p ~/devbox
