@@ -18,28 +18,17 @@ jobs:
           sudo systemctl enable ssh
           sudo systemctl restart ssh
 
-      - name: Start SSH tunnel via localhost.run (nokey)
+      - name: Start SSH tunnel via localhost.run (nokey, backgrounded)
         run: |
           echo "🌍 Starting SSH reverse tunnel via localhost.run..."
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 2222:localhost:2222 nokey@localhost.run -N -v 2>&1 | tee tunnel.log &
+          (
+            echo "🎯 Tunnel is ready! Use this to connect:"
+            echo "ssh -p 2222 root@$(hostname).localhost.run"
+            sleep infinity
+          ) | ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 2222:localhost:2222 nokey@localhost.run -T > tunnel.log 2>&1 &
+
+          disown
           sleep 5
-
-          echo "🔍 Extracting tunnel address..."
-          for i in {1..10}; do
-            sleep 2
-            subdomain=$(grep -oE '[a-z0-9]{6,}\.localhost\.run' tunnel.log | head -n 1)
-            if [[ -n "$subdomain" ]]; then
-              echo "🎯 SSH into your Devbox with:"
-              echo "ssh -p 2222 root@$subdomain"
-              break
-            fi
-          done
-
-          if [[ -z "$subdomain" ]]; then
-            echo "❌ Could not detect tunnel address. Log tail:"
-            tail -n 40 tunnel.log
-            exit 1
-          fi
 
       - name: Create devbox workspace
         run: mkdir -p ~/devbox
