@@ -1,4 +1,4 @@
-name: Remote Devbox SSH (localhost.run, nokey)
+name: Remote Devbox SSH (serveo.net)
 
 on:
   workflow_dispatch:
@@ -18,20 +18,20 @@ jobs:
           sudo systemctl enable ssh
           sudo systemctl restart ssh
 
-      - name: Start SSH tunnel via localhost.run (nokey, backgrounded)
+      - name: Add public SSH key
         run: |
-          echo "🌍 Starting SSH reverse tunnel via localhost.run..."
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 2222:localhost:2222 nokey@localhost.run -T > tunnel.log 2>&1 &
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PUBLIC_KEY }}" > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+
+      - name: Start SSH tunnel via serveo.net
+        run: |
+          echo "🌍 Establishing reverse SSH tunnel via serveo.net..."
+          ssh -o StrictHostKeyChecking=no -R 2222:localhost:2222 serveo.net -T > serveo.log 2>&1 &
           sleep 5
-          echo "🔍 Extracting tunnel address..."
-          subdomain=$(grep -oE '[a-z0-9]{6,}\.localhost\.run' tunnel.log | head -n 1)
-          if [[ -n "$subdomain" ]]; then
-            echo "🎯 SSH into your Devbox with:"
-            echo "ssh -p 2222 root@$subdomain"
-          else
-            echo "⚠️ Could not detect tunnel address. Here's the log tail:"
-            tail -n 40 tunnel.log
-          fi
+          echo "🔍 Checking tunnel status..."
+          grep "Forwarding TCP connections" serveo.log || { echo "❌ Tunnel not established"; tail -n 20 serveo.log; exit 1; }
+          grep "Forwarding TCP connections" serveo.log
 
       - name: Create devbox workspace
         run: mkdir -p ~/devbox
