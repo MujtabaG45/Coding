@@ -1,4 +1,4 @@
-name: Remote Devbox SSH (localhost.run)
+name: Remote Devbox SSH (localhost.run, nokey)
 
 on:
   workflow_dispatch:
@@ -18,32 +18,26 @@ jobs:
           sudo systemctl enable ssh
           sudo systemctl restart ssh
 
-      - name: Add public SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PUBLIC_KEY }}" > ~/.ssh/authorized_keys
-          chmod 600 ~/.ssh/authorized_keys
-
-      - name: Start SSH tunnel via localhost.run and show address
+      - name: Start SSH tunnel via localhost.run (nokey)
         run: |
           echo "🌍 Starting SSH reverse tunnel via localhost.run..."
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 2222:localhost:2222 ssh.localhost.run -N -v 2>&1 | tee tunnel.log &
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 2222:localhost:2222 nokey@localhost.run -N -v 2>&1 | tee tunnel.log &
           sleep 5
-          
-          echo "🔍 Looking for tunnel address..."
+
+          echo "🔍 Extracting tunnel address..."
           for i in {1..10}; do
             sleep 2
             subdomain=$(grep -oE '[a-z0-9]{6,}\.localhost\.run' tunnel.log | head -n 1)
             if [[ -n "$subdomain" ]]; then
-              echo "🎯 SSH into your devbox with:"
+              echo "🎯 SSH into your Devbox with:"
               echo "ssh -p 2222 root@$subdomain"
               break
             fi
           done
 
           if [[ -z "$subdomain" ]]; then
-            echo "❌ Could not detect tunnel address. Here's the log tail:"
-            tail -n 30 tunnel.log
+            echo "❌ Could not detect tunnel address. Log tail:"
+            tail -n 40 tunnel.log
             exit 1
           fi
 
