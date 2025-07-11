@@ -1,46 +1,47 @@
-name: Code Server with Ngrok (Live + No Auth)
+name: Code Server via Ngrok
 
 on:
   workflow_dispatch:
 
 jobs:
-  deploy-devbox:
+  launch-devbox:
     runs-on: ubuntu-latest
 
     env:
       NGROK_AUTH_TOKEN: 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
 
     steps:
-      - name: Install dependencies
+      - name: 🧱 Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y curl unzip jq
 
-      - name: Install code-server
+      - name: 💻 Install code-server
         run: |
           curl -fsSL https://code-server.dev/install.sh | sh
 
-      - name: Configure code-server (no password)
+      - name: ⚙️ Configure code-server (no password)
         run: |
           mkdir -p ~/.config/code-server
           echo "bind-addr: 0.0.0.0:8080" > ~/.config/code-server/config.yaml
           echo "auth: none" >> ~/.config/code-server/config.yaml
           echo "cert: false" >> ~/.config/code-server/config.yaml
 
-      - name: Install ngrok
+      - name: 🔌 Install ngrok and apply auth
         run: |
           curl -sLO https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
           unzip ngrok-stable-linux-amd64.zip
-          sudo mv ngrok /usr/local/bin/
-          ngrok config add-authtoken $NGROK_AUTH_TOKEN
+          sudo mv ngrok /usr/local/bin/ngrok
+          ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
 
-      - name: Launch code-server and ngrok
+      - name: 🚀 Launch code-server and ngrok tunnel
         run: |
           nohup code-server > code-server.log 2>&1 &
           sleep 3
           nohup ngrok http 8080 > ngrok.log 2>&1 &
           sleep 5
+          echo "🔗 Bookmark your tunnel: https://lynx-singular-loosely.ngrok-free.app"
           curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
 
-      - name: Keep workflow running (prevents cleanup)
+      - name: 🧬 Keep workflow alive
         run: tail -f /dev/null
