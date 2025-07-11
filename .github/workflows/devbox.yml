@@ -1,50 +1,45 @@
-name: Remote Devbox SSH (serveo.net)
+name: Code Server with Ngrok
 
 on:
   workflow_dispatch:
 
 jobs:
-  remote-devbox:
+  deploy-devbox:
     runs-on: ubuntu-latest
 
+    env:
+      NGROK_AUTH_TOKEN: 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
+
     steps:
-      - name: Install OpenSSH and GitHub CLI
+      - name: Update and install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y openssh-server gh
-          sudo sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
-          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-          sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-          sudo systemctl enable ssh
-          sudo systemctl restart ssh
+          sudo apt-get update
+          sudo apt-get install -y curl unzip
 
-      - name: Add public SSH key
+      - name: Install code-server
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PUBLIC_KEY }}" > ~/.ssh/authorized_keys
-          chmod 600 ~/.ssh/authorized_keys
+          curl -fsSL https://code-server.dev/install.sh | sh
 
-      - name: Start SSH tunnel via serveo.net
+      - name: Configure code-server to run without password
         run: |
-          echo "🌍 Establishing reverse SSH tunnel via serveo.net..."
-          ssh -o StrictHostKeyChecking=no -R 2222:localhost:2222 serveo.net -T > serveo.log 2>&1 &
+          mkdir -p ~/.config/code-server
+          echo "bind-addr: 0.0.0.0:8080" > ~/.config/code-server/config.yaml
+          echo "auth: none" >> ~/.config/code-server/config.yaml
+          echo "password: ''" >> ~/.config/code-server/config.yaml
+          echo "cert: false" >> ~/.config/code-server/config.yaml
+
+      - name: Install ngrok
+        run: |
+          curl -sLO https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
+          unzip ngrok-stable-linux-amd64.zip
+          sudo mv ngrok /usr/local/bin/
+          ngrok config add-authtoken $NGROK_AUTH_TOKEN
+
+      - name: Launch code-server and ngrok
+        run: |
+          nohup code-server > code-server.log 2>&1 &
+          sleep 3
+          nohup ngrok http 8080 > ngrok.log 2>&1 &
           sleep 5
-          echo "🔍 Checking tunnel status..."
-          grep "Forwarding TCP connections" serveo.log || { echo "❌ Tunnel not established"; tail -n 20 serveo.log; exit 1; }
-          grep "Forwarding TCP connections" serveo.log
+          curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
 
-      - name: Create devbox workspace
-        run: mkdir -p ~/devbox
-
-      - name: Snapshot loop to GitHub Artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "📦 Uploading periodic snapshots of ~/devbox..."
-          while true; do
-            tar -czf devbox.tar.gz -C ~/ devbox
-            timestamp=$(date +%s)
-            cp devbox.tar.gz devbox-$timestamp.tar.gz
-            gh run upload-artifact --name "devbox-$timestamp" devbox-$timestamp.tar.gz || echo "⚠️ Artifact upload failed"
-            sleep 60
-          done
