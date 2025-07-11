@@ -1,4 +1,4 @@
-name: Code Server with Ngrok (Persistent)
+name: Code Server with Ngrok (Live + No Auth)
 
 on:
   workflow_dispatch:
@@ -42,5 +42,5 @@ jobs:
           sleep 5
           curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
 
-      - name: Keep workflow alive
+      - name: Keep workflow running (prevents cleanup)
         run: tail -f /dev/null
