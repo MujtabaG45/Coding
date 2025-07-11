@@ -1,4 +1,4 @@
-name: Code Server via Ngrok
+name: Code Server via Ngrok (Verbose Forever Tunnel)
 
 on:
   workflow_dispatch:
@@ -9,39 +9,55 @@ jobs:
 
     env:
       NGROK_AUTH_TOKEN: 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
+      NGROK_DOMAIN: lynx-singular-loosely.ngrok-free.app
+      CODE_SERVER_PORT: 8080
 
     steps:
-      - name: 🧱 Install dependencies
+      - name: 🧱 Install dependencies (curl, unzip, jq)
         run: |
+          echo "[INFO] Updating package index..."
           sudo apt-get update
+          echo "[INFO] Installing dependencies..."
           sudo apt-get install -y curl unzip jq
 
       - name: 💻 Install code-server
         run: |
+          echo "[INFO] Installing code-server..."
           curl -fsSL https://code-server.dev/install.sh | sh
 
-      - name: ⚙️ Configure code-server (no password)
+      - name: ⚙️ Configure code-server (no password, public bind)
         run: |
+          echo "[INFO] Creating config directory..."
           mkdir -p ~/.config/code-server
-          echo "bind-addr: 0.0.0.0:8080" > ~/.config/code-server/config.yaml
+          echo "bind-addr: 0.0.0.0:$CODE_SERVER_PORT" > ~/.config/code-server/config.yaml
           echo "auth: none" >> ~/.config/code-server/config.yaml
           echo "cert: false" >> ~/.config/code-server/config.yaml
+          echo "[INFO] code-server configured for public access on port $CODE_SERVER_PORT"
 
-      - name: 🔌 Install ngrok and apply auth
+      - name: 🔌 Install ngrok and apply token
         run: |
+          echo "[INFO] Downloading ngrok..."
           curl -sLO https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
-          unzip ngrok-stable-linux-amd64.zip
+          unzip -o ngrok-stable-linux-amd64.zip
           sudo mv ngrok /usr/local/bin/ngrok
+          echo "[INFO] Adding ngrok auth token..."
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
+          echo "[INFO] ngrok configured successfully"
 
-      - name: 🚀 Launch code-server and ngrok tunnel
+      - name: 🚀 Launch code-server & ngrok tunnel
         run: |
+          echo "[INFO] Launching code-server in background..."
           nohup code-server > code-server.log 2>&1 &
-          sleep 3
-          nohup ngrok http 8080 > ngrok.log 2>&1 &
           sleep 5
-          echo "🔗 Bookmark your tunnel: https://lynx-singular-loosely.ngrok-free.app"
-          curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
+          echo "[INFO] Launching ngrok tunnel on domain: $NGROK_DOMAIN"
+          nohup ngrok http --domain=$NGROK_DOMAIN $CODE_SERVER_PORT > ngrok.log 2>&1 &
+          sleep 10
+          echo "[INFO] Fetching tunnel status..."
+          curl -s localhost:4040/api/tunnels | jq
+          echo "🔗 Permanent access URL: https://$NGROK_DOMAIN"
+          echo "[STATUS] If the above domain shows offline, check ngrok.log and verify tunnel binding."
 
-      - name: 🧬 Keep workflow alive
-        run: tail -f /dev/null
+      - name: 🧬 Keep workflow alive to prevent cleanup
+        run: |
+          echo "[INFO] Holding workflow to keep tunnel active..."
+          tail -f /dev/null
