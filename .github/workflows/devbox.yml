@@ -1,4 +1,4 @@
-name: Code Server with Ngrok
+name: Code Server with Ngrok (Persistent)
 
 on:
   workflow_dispatch:
@@ -11,21 +11,20 @@ jobs:
       NGROK_AUTH_TOKEN: 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
 
     steps:
-      - name: Update and install dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl unzip
+          sudo apt-get install -y curl unzip jq
 
       - name: Install code-server
         run: |
           curl -fsSL https://code-server.dev/install.sh | sh
 
-      - name: Configure code-server to run without password
+      - name: Configure code-server (no password)
         run: |
           mkdir -p ~/.config/code-server
           echo "bind-addr: 0.0.0.0:8080" > ~/.config/code-server/config.yaml
           echo "auth: none" >> ~/.config/code-server/config.yaml
-          echo "password: ''" >> ~/.config/code-server/config.yaml
           echo "cert: false" >> ~/.config/code-server/config.yaml
 
       - name: Install ngrok
@@ -43,3 +42,5 @@ jobs:
           sleep 5
           curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
 
+      - name: Keep workflow alive
+        run: tail -f /dev/null
