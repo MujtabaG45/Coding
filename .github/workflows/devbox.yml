@@ -1,4 +1,4 @@
-name: Code Server Live with Continuous Snapshots
+name: Code Server Live with Continuous Artifact Snapshots
 
 on:
   workflow_dispatch:
@@ -20,25 +20,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl unzip jq zip
 
-      - name: 📥 Attempt to restore workspace
+      - name: 📥 Restore workspace if available
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: code-server-workspace
           path: restore
 
-      - name: 🔓 Unpack previous workspace if found
+      - name: 🔓 Unpack previous workspace
         run: |
           if [ -f restore/workspace.zip ]; then
-            echo "[INFO] Previous workspace found — restoring..."
+            echo "[INFO] Unpacking previous workspace..."
             unzip -o restore/workspace.zip -d ~/
           else
-            echo "[WARN] No prior workspace found — starting fresh."
+            echo "[INFO] No prior workspace to restore — starting fresh."
           fi
 
       - name: 💻 Install code-server
-        run: |
-          curl -fsSL https://code-server.dev/install.sh | sh
+        run: curl -fsSL https://code-server.dev/install.sh | sh
 
       - name: ⚙️ Configure code-server
         run: |
@@ -54,35 +53,49 @@ jobs:
           sudo mv ngrok /usr/local/bin/ngrok
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
 
-      - name: 🚀 Launch code-server and ngrok
+      - name: 🚀 Launch code-server and ngrok tunnel
         run: |
           nohup code-server > code-server.log 2>&1 &
           sleep 5
           nohup ngrok http --domain=$NGROK_DOMAIN $CODE_SERVER_PORT > ngrok.log 2>&1 &
           sleep 10
-          echo "🔗 Tunnel: https://$NGROK_DOMAIN"
+          echo "🔗 Tunnel active at: https://$NGROK_DOMAIN"
 
-      - name: 📦 Begin minute-by-minute snapshot and upload loop
-        run: |
-          echo "[LOOP] Snapshot + upload loop starting..."
-          i=1
-          while true; do
-            TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-            SNAPFILE="workspace-$TIMESTAMP.zip"
-            SNAPDIR="snap-$i"
+      - name: 🔁 Start continuous snapshot loop
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const fs = require('fs');
+            const path = require('path');
 
-            mkdir -p $SNAPDIR
-            zip -r "$SNAPDIR/$SNAPFILE" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Failed to zip"
+            const SNAP_DIR = path.join(process.env.HOME, 'snapshots');
+            fs.mkdirSync(SNAP_DIR, { recursive: true });
 
-            echo "[UPLOAD] Uploading $SNAPFILE as $SNAPDIR artifact..."
-            gh api \
-              -X POST \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              /repos/${{ github.repository }}/actions/artifacts \
-              -f name="$SNAPDIR" \
-              -f path="$SNAPDIR/$SNAPFILE" || echo "[WARN] Upload failed"
+            let counter = 1;
 
-            rm -rf "$SNAPDIR"
-            i=$((i+1))
-            sleep 60
-          done
+            console.log("[LOOP] Starting snapshot loop...");
+            const interval = setInterval(() => {
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const zipName = `workspace-${timestamp}.zip`;
+              const zipPath = path.join(SNAP_DIR, zipName);
+
+              try {
+                execSync(`zip -r '${zipPath}' ~/.local/share/code-server -x '*.sock'`);
+                console.log(`[SNAPSHOT] Created ${zipName}`);
+
+                process.setOutput('artifact-name', zipName);
+              } catch (err) {
+                console.warn(`[ERROR] Snapshot failed: ${err.message}`);
+              }
+
+              counter++;
+              if (counter > 60) {
+                clearInterval(interval);
+                console.log("[LOOP] Max snapshot limit reached. Stopping.");
+              }
+            }, 60000); // 60 seconds
+            await new Promise(() => {});
+      
+      - name: 🧬 Keep session alive
+        run: tail -f /dev/null
