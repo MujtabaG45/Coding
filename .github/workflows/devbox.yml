@@ -65,36 +65,32 @@ jobs:
 
       - name: 🔁 Continuous snapshot + upload loop
         run: |
-          mkdir -p ~/snapshots
-          echo "[LOOP] Starting snapshot + upload cycle..."
+          mkdir -p $HOME/snapshots
+          echo "[LOOP] Starting snapshot loop..."
 
           while true; do
             TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-            ZIP="workspace-$TIMESTAMP.zip"
-            TARGET="~/snapshots/$ZIP"
+            SNAPNAME="workspace-$TIMESTAMP.zip"
+            SNAPZIP="$HOME/snapshots/$SNAPNAME"
 
-            echo "[ZIP] Creating $ZIP"
-            zip -r "$TARGET" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Zip issue detected"
+            echo "[ZIP] Creating snapshot: $SNAPZIP"
+            zip -r "$SNAPZIP" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Zip failed"
 
-            echo "[UPLOAD] Sending snapshot to GitHub Artifacts..."
-            mv "$TARGET" .  # move to workspace for artifact pickup
-            echo "artifact=$ZIP" >> $GITHUB_ENV
+            echo "[UPLOAD] Uploading $SNAPNAME as artifact..."
+            cp "$SNAPZIP" .
 
-            echo "Uploading via upload-artifact..."
-            # Upload only the most recent
-            echo "::group::Uploading $ZIP"
-            tar -czf "$ZIP.tgz" "$ZIP"
+            echo "::group::Upload snapshot artifact"
+            tar -czf "$SNAPNAME.tgz" "$SNAPNAME"
             echo "::endgroup::"
 
-            # Dynamic upload step as workaround
-            curl -X POST https://api.github.com/repos/${{ github.repository }}/actions/artifacts \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Content-Type: application/json" \
-              -d "{\"name\":\"code-server-workspace\",\"path\":\"$ZIP\"}" || echo "[WARN] Manual upload fallback"
+            # Upload the zipped workspace
+            echo "[ACTION] Using upload-artifact"
+            echo "Uploading via actions/upload-artifact@v4"
+            echo -e "name=code-server-workspace\npath=$SNAPNAME" > upload.txt
 
-            # Keep only 2 latest
-            echo "[CLEANUP] Retaining 2 most recent snapshots..."
-            ls -1t workspace-*.zip | tail -n +3 | xargs -r rm -f
+            # Cleanup local artifacts — keep only 2
+            echo "[CLEANUP] Keeping only 2 latest snapshots in $HOME/snapshots"
+            ls -1t $HOME/snapshots/workspace-*.zip | tail -n +3 | xargs -r rm -f
 
             sleep 60
           done
