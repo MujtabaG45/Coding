@@ -1,8 +1,8 @@
-name: Code Server Snapshots (Every Minute + Manual Trigger)
+name: Code Server Snapshots (Minute-wise + Discord Trigger)
 
 on:
   schedule:
-    - cron: "*/1 * * * *"  # Snapshot every 1 minute
+    - cron: "*/1 * * * *"  # Every 1 minute
   workflow_dispatch:
   repository_dispatch:
     types: [save_workspace]
@@ -70,7 +70,7 @@ jobs:
           mkdir -p ~/.local/share/code-server
           TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
           echo "[INFO] Creating snapshot: workspace-$TIMESTAMP.zip"
-          zip -r "workspace-$TIMESTAMP.zip" ~/.local/share/code-server
+          zip -r "workspace-$TIMESTAMP.zip" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Snapshot completed with warnings"
 
       - name: 🛠️ Upload workspace snapshot
         uses: actions/upload-artifact@v4
@@ -83,7 +83,7 @@ jobs:
           curl -X POST https://discord.com/api/webhooks/1393520015600390165/1eV2Yjf8KnG1l4-93tAoxMEhZxBO9zyTMvWbAkwjDluO5cuhdgeIrdgqHf5O5KWHgyR9 \
             -H "Content-Type: application/json" \
             -d '{
-              "content": "📦 New snapshot created. Click to manually trigger another save:",
+              "content": "📦 Snapshot created. Click below to manually trigger another save:",
               "components": [{
                 "type": 1,
                 "components": [{
