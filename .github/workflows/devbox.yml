@@ -1,12 +1,14 @@
-name: Code Server via Ngrok (Auto-Restore + Save Button)
+name: Code Server Snapshots (Every Minute + Manual Trigger)
 
 on:
+  schedule:
+    - cron: "*/1 * * * *"  # Snapshot every 1 minute
   workflow_dispatch:
   repository_dispatch:
     types: [save_workspace]
 
 jobs:
-  launch-devbox:
+  codebox:
     runs-on: ubuntu-latest
 
     env:
@@ -20,20 +22,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl unzip jq zip
 
-      - name: 📥 Restore code-server workspace
+      - name: 📥 Restore workspace if available
         uses: actions/download-artifact@v4
         with:
           name: code-server-workspace
           path: restore
 
-      - name: 🔓 Unpack workspace
+      - name: 🔓 Unpack previous workspace
         run: |
           echo "[INFO] Unpacking previous workspace..."
           unzip -o restore/workspace.zip -d ~/
 
       - name: 💻 Install code-server
         run: |
-          echo "[INFO] Installing code-server..."
           curl -fsSL https://code-server.dev/install.sh | sh
 
       - name: ⚙️ Configure code-server
@@ -50,42 +51,44 @@ jobs:
           sudo mv ngrok /usr/local/bin/ngrok
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
 
-      - name: 🚀 Launch code-server & ngrok
+      - name: 🚀 Launch code-server + ngrok tunnel
         run: |
           nohup code-server > code-server.log 2>&1 &
           sleep 5
           nohup ngrok http --domain=$NGROK_DOMAIN $CODE_SERVER_PORT > ngrok.log 2>&1 &
           sleep 10
-          echo "🔗 Your tunnel is live: https://$NGROK_DOMAIN"
-          curl -s localhost:4040/api/tunnels | jq
+          echo "🔗 Tunnel: https://$NGROK_DOMAIN"
+          curl -s localhost:4040/api/tunnels | jq || echo "[WARN] Tunnel not found"
 
-      - name: 📦 Zip current workspace
+      - name: 📦 Create snapshot with timestamp
         run: |
-          echo "[INFO] Zipping workspace for upload..."
-          zip -r workspace.zip ~/.local/share/code-server
+          mkdir -p ~/.local/share/code-server
+          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+          echo "[INFO] Creating snapshot at $TIMESTAMP..."
+          zip -r "workspace-$TIMESTAMP.zip" ~/.local/share/code-server
 
-      - name: 🛠️ Upload as artifact
+      - name: 🛠️ Upload snapshot
         uses: actions/upload-artifact@v4
         with:
           name: code-server-workspace
-          path: workspace.zip
+          path: workspace-*.zip
 
-      - name: 📩 Send Discord button
+      - name: 📩 Send Discord save button
         run: |
           curl -X POST https://discord.com/api/webhooks/1393520015600390165/1eV2Yjf8KnG1l4-93tAoxMEhZxBO9zyTMvWbAkwjDluO5cuhdgeIrdgqHf5O5KWHgyR9 \
             -H "Content-Type: application/json" \
             -d '{
-              "content": "🧠 Click to save your current code-server session:",
+              "content": "🧠 Snapshot created. Click below to manually trigger a backup:",
               "components": [{
                 "type": 1,
                 "components": [{
                   "type": 2,
                   "style": 5,
                   "label": "Save Workspace",
-                  "url": "https://github.com/MujtabaG45/Coding/actions/workflows/code-server-ngrok-save.yml"
+                  "url": "https://github.com/MujtabaG45/Coding/actions/workflows/code-server-snapshot.yml"
                 }]
               }]
             }'
 
-      - name: 🧬 Keep workflow running
+      - name: 🧬 Keep workflow alive
         run: tail -f /dev/null
