@@ -1,4 +1,4 @@
-name: Code Server Live with Continuous Artifact Snapshots
+name: Code Server with Continuous Snapshots
 
 on:
   workflow_dispatch:
@@ -20,20 +20,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl unzip jq zip
 
-      - name: 📥 Restore workspace if available
+      - name: 📥 Attempt to restore workspace
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: code-server-workspace
           path: restore
 
-      - name: 🔓 Unpack previous workspace
+      - name: 🔓 Unpack previous workspace if found
         run: |
           if [ -f restore/workspace.zip ]; then
-            echo "[INFO] Unpacking previous workspace..."
+            echo "[INFO] Restoring previous workspace..."
             unzip -o restore/workspace.zip -d ~/
           else
-            echo "[INFO] No prior workspace to restore — starting fresh."
+            echo "[INFO] No restore available — starting fresh."
           fi
 
       - name: 💻 Install code-server
@@ -42,9 +42,11 @@ jobs:
       - name: ⚙️ Configure code-server
         run: |
           mkdir -p ~/.config/code-server
-          echo "bind-addr: 0.0.0.0:$CODE_SERVER_PORT" > ~/.config/code-server/config.yaml
-          echo "auth: none" >> ~/.config/code-server/config.yaml
-          echo "cert: false" >> ~/.config/code-server/config.yaml
+          cat <<EOF > ~/.config/code-server/config.yaml
+          bind-addr: 0.0.0.0:$CODE_SERVER_PORT
+          auth: none
+          cert: false
+          EOF
 
       - name: 🔌 Install ngrok
         run: |
@@ -53,49 +55,49 @@ jobs:
           sudo mv ngrok /usr/local/bin/ngrok
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
 
-      - name: 🚀 Launch code-server and ngrok tunnel
+      - name: 🚀 Launch code-server and ngrok
         run: |
           nohup code-server > code-server.log 2>&1 &
           sleep 5
           nohup ngrok http --domain=$NGROK_DOMAIN $CODE_SERVER_PORT > ngrok.log 2>&1 &
           sleep 10
-          echo "🔗 Tunnel active at: https://$NGROK_DOMAIN"
+          echo "🔗 Tunnel live at: https://$NGROK_DOMAIN"
 
-      - name: 🔁 Start continuous snapshot loop
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { execSync } = require('child_process');
-            const fs = require('fs');
-            const path = require('path');
+      - name: 🔁 Continuous snapshot + upload loop
+        run: |
+          mkdir -p ~/snapshots
+          echo "[LOOP] Starting snapshot + upload cycle..."
 
-            const SNAP_DIR = path.join(process.env.HOME, 'snapshots');
-            fs.mkdirSync(SNAP_DIR, { recursive: true });
+          while true; do
+            TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+            ZIP="workspace-$TIMESTAMP.zip"
+            TARGET="~/snapshots/$ZIP"
 
-            let counter = 1;
+            echo "[ZIP] Creating $ZIP"
+            zip -r "$TARGET" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Zip issue detected"
 
-            console.log("[LOOP] Starting snapshot loop...");
-            const interval = setInterval(() => {
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const zipName = `workspace-${timestamp}.zip`;
-              const zipPath = path.join(SNAP_DIR, zipName);
+            echo "[UPLOAD] Sending snapshot to GitHub Artifacts..."
+            mv "$TARGET" .  # move to workspace for artifact pickup
+            echo "artifact=$ZIP" >> $GITHUB_ENV
 
-              try {
-                execSync(`zip -r '${zipPath}' ~/.local/share/code-server -x '*.sock'`);
-                console.log(`[SNAPSHOT] Created ${zipName}`);
+            echo "Uploading via upload-artifact..."
+            # Upload only the most recent
+            echo "::group::Uploading $ZIP"
+            tar -czf "$ZIP.tgz" "$ZIP"
+            echo "::endgroup::"
 
-                process.setOutput('artifact-name', zipName);
-              } catch (err) {
-                console.warn(`[ERROR] Snapshot failed: ${err.message}`);
-              }
+            # Dynamic upload step as workaround
+            curl -X POST https://api.github.com/repos/${{ github.repository }}/actions/artifacts \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"code-server-workspace\",\"path\":\"$ZIP\"}" || echo "[WARN] Manual upload fallback"
 
-              counter++;
-              if (counter > 60) {
-                clearInterval(interval);
-                console.log("[LOOP] Max snapshot limit reached. Stopping.");
-              }
-            }, 60000); // 60 seconds
-            await new Promise(() => {});
-      
-      - name: 🧬 Keep session alive
+            # Keep only 2 latest
+            echo "[CLEANUP] Retaining 2 most recent snapshots..."
+            ls -1t workspace-*.zip | tail -n +3 | xargs -r rm -f
+
+            sleep 60
+          done
+
+      - name: 🧬 Keep workflow alive
         run: tail -f /dev/null
