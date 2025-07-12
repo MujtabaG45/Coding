@@ -1,4 +1,4 @@
-name: Code Server Live with Snapshot Loop
+name: Code Server Live with Continuous Snapshots
 
 on:
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
             echo "[INFO] Previous workspace found — restoring..."
             unzip -o restore/workspace.zip -d ~/
           else
-            echo "[WARN] No prior workspace artifact found — starting fresh."
+            echo "[WARN] No prior workspace found — starting fresh."
           fi
 
       - name: 💻 Install code-server
@@ -54,29 +54,35 @@ jobs:
           sudo mv ngrok /usr/local/bin/ngrok
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
 
-      - name: 🚀 Launch code-server and ngrok tunnel
+      - name: 🚀 Launch code-server and ngrok
         run: |
           nohup code-server > code-server.log 2>&1 &
           sleep 5
           nohup ngrok http --domain=$NGROK_DOMAIN $CODE_SERVER_PORT > ngrok.log 2>&1 &
           sleep 10
-          echo "🔗 Tunnel live at: https://$NGROK_DOMAIN"
-          curl -s localhost:4040/api/tunnels | jq || echo "[WARN] Tunnel metadata not available"
+          echo "🔗 Tunnel: https://$NGROK_DOMAIN"
 
-      - name: ⏱️ Start snapshot loop
+      - name: 📦 Begin minute-by-minute snapshot and upload loop
         run: |
-          mkdir -p ~/snapshots
+          echo "[LOOP] Snapshot + upload loop starting..."
+          i=1
           while true; do
             TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-            SNAP="workspace-$TIMESTAMP.zip"
-            echo "[SNAPSHOT] Creating: $SNAP"
-            zip -r ~/snapshots/$SNAP ~/.local/share/code-server -x '*.sock' || echo "[WARN] Zip had issues"
+            SNAPFILE="workspace-$TIMESTAMP.zip"
+            SNAPDIR="snap-$i"
+
+            mkdir -p $SNAPDIR
+            zip -r "$SNAPDIR/$SNAPFILE" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Failed to zip"
+
+            echo "[UPLOAD] Uploading $SNAPFILE as $SNAPDIR artifact..."
+            gh api \
+              -X POST \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              /repos/${{ github.repository }}/actions/artifacts \
+              -f name="$SNAPDIR" \
+              -f path="$SNAPDIR/$SNAPFILE" || echo "[WARN] Upload failed"
+
+            rm -rf "$SNAPDIR"
+            i=$((i+1))
             sleep 60
           done
-
-      - name: 📦 Upload snapshots (not reachable due to loop)
-        if: false
-        uses: actions/upload-artifact@v4
-        with:
-          name: code-server-workspace
-          path: snapshots/*.zip
