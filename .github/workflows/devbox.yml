@@ -1,14 +1,12 @@
-name: Code Server Snapshots (Minute-wise + Discord Trigger)
+name: Code Server Live with Internal Snapshots
 
 on:
-  schedule:
-    - cron: "*/1 * * * *"  # Every 1 minute
   workflow_dispatch:
   repository_dispatch:
     types: [save_workspace]
 
 jobs:
-  codebox:
+  persistent-devbox:
     runs-on: ubuntu-latest
 
     env:
@@ -65,35 +63,24 @@ jobs:
           echo "🔗 Tunnel live at: https://$NGROK_DOMAIN"
           curl -s localhost:4040/api/tunnels | jq || echo "[WARN] Tunnel metadata not available"
 
-      - name: 📦 Create timestamped workspace snapshot
+      - name: ⏱️ Start live snapshot loop
         run: |
           mkdir -p ~/.local/share/code-server
-          TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-          echo "[INFO] Creating snapshot: workspace-$TIMESTAMP.zip"
-          zip -r "workspace-$TIMESTAMP.zip" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Snapshot completed with warnings"
+          echo "[INFO] Starting 1-minute snapshot loop..."
+          while true; do
+            TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+            echo "[SNAPSHOT] workspace-$TIMESTAMP.zip"
+            zip -r "workspace-$TIMESTAMP.zip" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Snapshot had issues"
 
-      - name: 🛠️ Upload workspace snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: code-server-workspace
-          path: workspace-*.zip
+            echo "[UPLOAD] Sending snapshot to GitHub Artifacts..."
 
-      - name: 📩 Send Discord save button
-        run: |
-          curl -X POST https://discord.com/api/webhooks/1393520015600390165/1eV2Yjf8KnG1l4-93tAoxMEhZxBO9zyTMvWbAkwjDluO5cuhdgeIrdgqHf5O5KWHgyR9 \
-            -H "Content-Type: application/json" \
-            -d '{
-              "content": "📦 Snapshot created. Click below to manually trigger another save:",
-              "components": [{
-                "type": 1,
-                "components": [{
-                  "type": 2,
-                  "style": 5,
-                  "label": "Save Workspace",
-                  "url": "https://github.com/MujtabaG45/Coding/actions/workflows/code-server-snapshot.yml"
-                }]
-              }]
-            }'
+            gh run upload-artifact \
+              --name "snapshot-$TIMESTAMP" \
+              --path "workspace-$TIMESTAMP.zip" || echo "[WARN] Artifact upload failed"
 
-      - name: 🧬 Keep workflow alive
-        run: tail -f /dev/null
+            rm -f workspace-$TIMESTAMP.zip
+            sleep 60
+          done
+
+      - name: 🧩 Note: This block never runs
+        run: echo "Blocked by infinite loop — used to document fallback logic"
