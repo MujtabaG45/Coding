@@ -1,4 +1,4 @@
-name: Code Server Live with Internal Snapshots
+name: Code Server Live with Snapshot Loop
 
 on:
   workflow_dispatch:
@@ -63,24 +63,20 @@ jobs:
           echo "🔗 Tunnel live at: https://$NGROK_DOMAIN"
           curl -s localhost:4040/api/tunnels | jq || echo "[WARN] Tunnel metadata not available"
 
-      - name: ⏱️ Start live snapshot loop
+      - name: ⏱️ Start snapshot loop
         run: |
-          mkdir -p ~/.local/share/code-server
-          echo "[INFO] Starting 1-minute snapshot loop..."
+          mkdir -p ~/snapshots
           while true; do
             TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-            echo "[SNAPSHOT] workspace-$TIMESTAMP.zip"
-            zip -r "workspace-$TIMESTAMP.zip" ~/.local/share/code-server -x '*.sock' || echo "[WARN] Snapshot had issues"
-
-            echo "[UPLOAD] Sending snapshot to GitHub Artifacts..."
-
-            gh run upload-artifact \
-              --name "snapshot-$TIMESTAMP" \
-              --path "workspace-$TIMESTAMP.zip" || echo "[WARN] Artifact upload failed"
-
-            rm -f workspace-$TIMESTAMP.zip
+            SNAP="workspace-$TIMESTAMP.zip"
+            echo "[SNAPSHOT] Creating: $SNAP"
+            zip -r ~/snapshots/$SNAP ~/.local/share/code-server -x '*.sock' || echo "[WARN] Zip had issues"
             sleep 60
           done
 
-      - name: 🧩 Note: This block never runs
-        run: echo "Blocked by infinite loop — used to document fallback logic"
+      - name: 📦 Upload snapshots (not reachable due to loop)
+        if: false
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-server-workspace
+          path: snapshots/*.zip
