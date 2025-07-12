@@ -1,4 +1,4 @@
-name: Code Server via Ngrok (Verbose Forever Tunnel)
+name: Code Server via Ngrok (Auto-Restore Workspace)
 
 on:
   workflow_dispatch:
@@ -13,51 +13,59 @@ jobs:
       CODE_SERVER_PORT: 8080
 
     steps:
-      - name: 🧱 Install dependencies (curl, unzip, jq)
+      - name: 🧱 Install dependencies
         run: |
-          echo "[INFO] Updating package index..."
           sudo apt-get update
-          echo "[INFO] Installing dependencies..."
-          sudo apt-get install -y curl unzip jq
+          sudo apt-get install -y curl unzip jq zip
+
+      - name: 📥 Download latest workspace artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: code-server-workspace
+          path: restore
+
+      - name: 🔓 Restore workspace from artifact
+        run: |
+          echo "[INFO] Restoring workspace..."
+          unzip -o restore/workspace.zip -d ~/
 
       - name: 💻 Install code-server
         run: |
-          echo "[INFO] Installing code-server..."
           curl -fsSL https://code-server.dev/install.sh | sh
 
-      - name: ⚙️ Configure code-server (no password, public bind)
+      - name: ⚙️ Configure code-server (no password)
         run: |
-          echo "[INFO] Creating config directory..."
           mkdir -p ~/.config/code-server
           echo "bind-addr: 0.0.0.0:$CODE_SERVER_PORT" > ~/.config/code-server/config.yaml
           echo "auth: none" >> ~/.config/code-server/config.yaml
           echo "cert: false" >> ~/.config/code-server/config.yaml
-          echo "[INFO] code-server configured for public access on port $CODE_SERVER_PORT"
 
       - name: 🔌 Install ngrok and apply token
         run: |
-          echo "[INFO] Downloading ngrok..."
           curl -sLO https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
           unzip -o ngrok-stable-linux-amd64.zip
           sudo mv ngrok /usr/local/bin/ngrok
-          echo "[INFO] Adding ngrok auth token..."
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
-          echo "[INFO] ngrok configured successfully"
 
       - name: 🚀 Launch code-server & ngrok tunnel
         run: |
-          echo "[INFO] Launching code-server in background..."
           nohup code-server > code-server.log 2>&1 &
           sleep 5
-          echo "[INFO] Launching ngrok tunnel on domain: $NGROK_DOMAIN"
           nohup ngrok http --domain=$NGROK_DOMAIN $CODE_SERVER_PORT > ngrok.log 2>&1 &
           sleep 10
-          echo "[INFO] Fetching tunnel status..."
-          curl -s localhost:4040/api/tunnels | jq
           echo "🔗 Permanent access URL: https://$NGROK_DOMAIN"
-          echo "[STATUS] If the above domain shows offline, check ngrok.log and verify tunnel binding."
+          curl -s localhost:4040/api/tunnels | jq
 
-      - name: 🧬 Keep workflow alive to prevent cleanup
+      - name: 📦 Archive code-server workspace
         run: |
-          echo "[INFO] Holding workflow to keep tunnel active..."
-          tail -f /dev/null
+          echo "[INFO] Zipping workspace..."
+          zip -r workspace.zip ~/.local/share/code-server
+
+      - name: 🛠️ Upload workspace artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-server-workspace
+          path: workspace.zip
+
+      - name: 🧬 Keep workflow alive
+        run: tail -f /dev/null
