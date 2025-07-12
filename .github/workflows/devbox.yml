@@ -22,16 +22,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl unzip jq zip
 
-      - name: 📥 Restore workspace if available
+      - name: 📥 Attempt to restore workspace
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: code-server-workspace
           path: restore
 
-      - name: 🔓 Unpack previous workspace
+      - name: 🔓 Unpack previous workspace if found
         run: |
-          echo "[INFO] Unpacking previous workspace..."
-          unzip -o restore/workspace.zip -d ~/
+          if [ -f restore/workspace.zip ]; then
+            echo "[INFO] Previous workspace found — restoring..."
+            unzip -o restore/workspace.zip -d ~/
+          else
+            echo "[WARN] No prior workspace artifact found — starting fresh."
+          fi
 
       - name: 💻 Install code-server
         run: |
@@ -51,23 +56,23 @@ jobs:
           sudo mv ngrok /usr/local/bin/ngrok
           ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
 
-      - name: 🚀 Launch code-server + ngrok tunnel
+      - name: 🚀 Launch code-server and ngrok tunnel
         run: |
           nohup code-server > code-server.log 2>&1 &
           sleep 5
           nohup ngrok http --domain=$NGROK_DOMAIN $CODE_SERVER_PORT > ngrok.log 2>&1 &
           sleep 10
-          echo "🔗 Tunnel: https://$NGROK_DOMAIN"
-          curl -s localhost:4040/api/tunnels | jq || echo "[WARN] Tunnel not found"
+          echo "🔗 Tunnel live at: https://$NGROK_DOMAIN"
+          curl -s localhost:4040/api/tunnels | jq || echo "[WARN] Tunnel metadata not available"
 
-      - name: 📦 Create snapshot with timestamp
+      - name: 📦 Create timestamped workspace snapshot
         run: |
           mkdir -p ~/.local/share/code-server
           TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-          echo "[INFO] Creating snapshot at $TIMESTAMP..."
+          echo "[INFO] Creating snapshot: workspace-$TIMESTAMP.zip"
           zip -r "workspace-$TIMESTAMP.zip" ~/.local/share/code-server
 
-      - name: 🛠️ Upload snapshot
+      - name: 🛠️ Upload workspace snapshot
         uses: actions/upload-artifact@v4
         with:
           name: code-server-workspace
@@ -78,7 +83,7 @@ jobs:
           curl -X POST https://discord.com/api/webhooks/1393520015600390165/1eV2Yjf8KnG1l4-93tAoxMEhZxBO9zyTMvWbAkwjDluO5cuhdgeIrdgqHf5O5KWHgyR9 \
             -H "Content-Type: application/json" \
             -d '{
-              "content": "🧠 Snapshot created. Click below to manually trigger a backup:",
+              "content": "📦 New snapshot created. Click to manually trigger another save:",
               "components": [{
                 "type": 1,
                 "components": [{
