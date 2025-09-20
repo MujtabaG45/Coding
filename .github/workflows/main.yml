@@ -1,7 +1,7 @@
 name: Code Server with Ngrok
 
 on:
-  workflow_dispatch:  # 👈 This enables the "Run workflow" button
+  workflow_dispatch:  # Enables manual trigger via "Run workflow" button
 
 jobs:
   setup-code-server:
@@ -37,5 +37,9 @@ jobs:
       run: |
         nohup code-server > code-server.log 2>&1 &
         nohup ./ngrok start --config=ngrok.yml --all > ngrok.log 2>&1 &
-        sleep 10
         echo "Code Server and Ngrok started"
+
+    - name: Keep workflow alive
+      run: |
+        echo "Entering infinite loop to keep workflow alive..."
+        while true; do sleep 60; done
