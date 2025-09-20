@@ -1,6 +1,7 @@
 name: Code Server with Ngrok
 
-on: [push]
+on:
+  workflow_dispatch:  # 👈 This enables the "Run workflow" button
 
 jobs:
   setup-code-server:
