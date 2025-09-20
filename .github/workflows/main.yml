@@ -1,7 +1,7 @@
-name: Code Server with Ngrok
+name: Code Server with Ngrok v3
 
 on:
-  workflow_dispatch:  # Enables manual trigger via "Run workflow" button
+  workflow_dispatch:
 
 jobs:
   setup-code-server:
@@ -18,28 +18,29 @@ jobs:
         echo 'bind-addr: 127.0.0.1:8080' > ~/.config/code-server/config.yaml
         echo 'auth: none' >> ~/.config/code-server/config.yaml
 
-    - name: Download and configure Ngrok
+    - name: Install Ngrok v3
       run: |
-        wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-linux-amd64.zip
-        unzip ngrok-stable-linux-amd64.zip
-        ./ngrok config add-authtoken 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
-        echo "tunnels:" > ngrok.yml
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt update && sudo apt install ngrok
+
+    - name: Configure Ngrok with static domain
+      run: |
+        ngrok config add-authtoken 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
+        echo "version: 2" > ngrok.yml
+        echo "tunnels:" >> ngrok.yml
         echo "  code-server:" >> ngrok.yml
-        echo "    addr: 8080" >> ngrok.yml
         echo "    proto: http" >> ngrok.yml
-        echo "    metadata: code-server-tunnel" >> ngrok.yml
-        echo "    inspect: false" >> ngrok.yml
-        echo "    schemes: [https]" >> ngrok.yml
-        echo "    domain: lynx-singular-loosely.ngrok-free.app" >> ngrok.yml
-        echo "    remote_addr: rd_2zkC5Rza0L3zIcyyyxnmBF8d8r3" >> ngrok.yml
+        echo "    addr: 8080" >> ngrok.yml
+        echo "    hostname: lynx-singular-loosely.ngrok-free.app" >> ngrok.yml
 
     - name: Start Code Server and Ngrok
       run: |
         nohup code-server > code-server.log 2>&1 &
-        nohup ./ngrok start --config=ngrok.yml --all > ngrok.log 2>&1 &
+        nohup ngrok start --config ngrok.yml --all > ngrok.log 2>&1 &
         echo "Code Server and Ngrok started"
 
     - name: Keep workflow alive
       run: |
-        echo "Entering infinite loop to keep workflow alive..."
+        echo "Keeping workflow alive..."
         while true; do sleep 60; done
