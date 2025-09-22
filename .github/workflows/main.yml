@@ -1,38 +1,46 @@
-name: Code Server with Ngrok v3
+name: VSCode SSH Access via Ngrok
 
 on:
   workflow_dispatch:
 
 jobs:
-  setup-code-server:
+  ssh-server:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Install SSH server
+        run: |
+          sudo apt update
+          sudo apt install -y openssh-server
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
 
-    - name: Install Code Server
-      run: |
-        curl -fsSL https://code-server.dev/install.sh | sh
-        mkdir -p ~/.config/code-server
-        echo 'bind-addr: 127.0.0.1:8080' > ~/.config/code-server/config.yaml
-        echo 'auth: none' >> ~/.config/code-server/config.yaml
+      - name: Set up SSH user
+        run: |
+          sudo useradd -m vscode
+          echo 'vscode:vscode' | sudo chpasswd
+          echo 'vscode ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/vscode
+          sudo mkdir -p /home/vscode/.ssh
+          sudo chmod 700 /home/vscode/.ssh
 
-    - name: Install Ngrok v3
-      run: |
-        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-        sudo apt update && sudo apt install ngrok
+      - name: Install Ngrok
+        run: |
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
+            sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | \
+            sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update
+          sudo apt install -y ngrok
 
-    - name: Start Code Server and Ngrok
-      run: |
-        nohup code-server > code-server.log 2>&1 &
-        sleep 5
-        ngrok config add-authtoken 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
-        nohup ngrok http 8080 --hostname=lynx-singular-loosely.ngrok-free.app > ngrok.log 2>&1 &
-        echo "Code Server exposed at https://lynx-singular-loosely.ngrok-free.app"
+      - name: Configure Ngrok with Authtoken
+        run: |
+          ngrok config add-authtoken 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
 
-    - name: Keep workflow alive
-      run: |
-        echo "Keeping workflow alive..."
-        while true; do sleep 60; done
+      - name: Start Ngrok tunnel to SSH
+        run: |
+          ngrok tcp 22 --region=us --remote-addr=lynx-singular-loosely.ngrok-free.app:22 &
+          sleep 10
+          echo "Ngrok tunnel started. You can now SSH into the runner using your VSCode app."
+
+      - name: Keep runner alive
+        run: |
+          sleep 3600
