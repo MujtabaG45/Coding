@@ -14,7 +14,7 @@ jobs:
           sudo systemctl enable ssh
           sudo systemctl start ssh
 
-      - name: Set up SSH user
+      - name: Create SSH user
         run: |
           sudo useradd -m vscode
           echo 'vscode:vscode' | sudo chpasswd
@@ -22,25 +22,29 @@ jobs:
           sudo mkdir -p /home/vscode/.ssh
           sudo chmod 700 /home/vscode/.ssh
 
-      - name: Install Ngrok
+      - name: Install ngrok
         run: |
-          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | \
-            sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | \
-            sudo tee /etc/apt/sources.list.d/ngrok.list
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update
           sudo apt install -y ngrok
 
-      - name: Configure Ngrok with Authtoken
+      - name: Configure ngrok
         run: |
           ngrok config add-authtoken 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
+          cat <<EOF > ngrok.yml
+          tunnels:
+            ssh:
+              addr: 22
+              proto: tcp
+              remote_addr: lynx-singular-loosely.ngrok-free.app:22
+          EOF
 
-      - name: Start Ngrok tunnel to SSH
+      - name: Start ngrok tunnel
         run: |
-          ngrok tcp 22 --region=us --remote-addr=lynx-singular-loosely.ngrok-free.app:22 &
+          ngrok start --config ngrok.yml ssh &
           sleep 10
-          echo "Ngrok tunnel started. You can now SSH into the runner using your VSCode app."
+          echo "Ngrok tunnel started. Connect via: ssh vscode@lynx-singular-loosely.ngrok-free.app -p 22"
 
       - name: Keep runner alive
-        run: |
-          sleep 3600
+        run: sleep 3600
