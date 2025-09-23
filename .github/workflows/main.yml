@@ -41,6 +41,7 @@ jobs:
               proto: tcp
               addr: 22
               remote_addr: lynx-singular-loosely.ngrok-free.app:22
+              region: eu
           ' >> /home/runner/.config/ngrok/ngrok.yml
 
       - name: Start ngrok tunnel
