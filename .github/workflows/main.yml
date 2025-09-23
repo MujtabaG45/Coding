@@ -29,10 +29,14 @@ jobs:
           sudo apt update
           sudo apt install -y ngrok
 
-      - name: Configure ngrok
+      - name: Configure ngrok with authtoken
         run: |
           ngrok config add-authtoken 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
-          cat <<EOF > ngrok.yml
+
+      - name: Create ngrok config file
+        run: |
+          mkdir -p ~/.config/ngrok
+          cat <<EOF > ~/.config/ngrok/ngrok.yml
           version: "3"
           tunnels:
             ssh:
@@ -43,7 +47,7 @@ jobs:
 
       - name: Start ngrok tunnel
         run: |
-          ngrok start --config ngrok.yml ssh &
+          ngrok start --config ~/.config/ngrok/ngrok.yml ssh &
           sleep 10
           echo "Ngrok tunnel started. Connect via: ssh vscode@lynx-singular-loosely.ngrok-free.app -p 22"
 
