@@ -33,10 +33,11 @@ jobs:
         run: |
           ngrok config add-authtoken 2QQn03lHEv4FSfWroH8VrQt5hAm_3o3Knf2Rc9PjdAG5doJoe
           cat <<EOF > ngrok.yml
+          version: "3"
           tunnels:
             ssh:
-              addr: 22
               proto: tcp
+              addr: 22
               remote_addr: lynx-singular-loosely.ngrok-free.app:22
           EOF
 
@@ -46,5 +47,6 @@ jobs:
           sleep 10
           echo "Ngrok tunnel started. Connect via: ssh vscode@lynx-singular-loosely.ngrok-free.app -p 22"
 
-      - name: Keep runner alive
-        run: sleep 3600
+      - name: Keep runner alive forever
+        run: |
+          while true; do sleep 60; done
